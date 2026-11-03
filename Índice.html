@@ -258,6 +258,7 @@ details.tv table{font-size:12.5px;margin-top:6px}
     <div class="brand"><div class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6v3l2 3v11a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V9l2-3z"/><path d="M7 13h10"/></svg></div>
       <div><b class="storeName">Minha Loja</b><small>Controle de estoque</small></div></div>
     <nav id="nav"></nav>
+    <a class="nav" href="financeiro.html" style="text-decoration:none;margin-top:8px"><span style="width:20px;text-align:center">💰</span><span>Financeiro ↗</span></a>
     <div class="sync" id="sync"></div>
   </aside>
   <main id="main"><div class="empty">Carregando…</div></main>
@@ -299,7 +300,7 @@ const SAIDAS=[['Venda','Venda'],['Uso interno','Uso na loja'],['Perda','Perda / 
 
 // ============ armazenamento (mesma estrutura e chaves da versão anterior) ============
 const COLS_B=['vendas','compras','despesas','investimentos','movimentos','caixa','inventarios'];
-const COLS_M=['produtos','clientes','config','centros'];
+const COLS_M=['produtos','clientes','config','centros','fechamentos'];
 const B={};COLS_B.forEach(c=>B[c]=new Map());
 const M={};COLS_M.forEach(c=>M[c]=new Map());
 const LSK='lojaLimpeza.v1.';
@@ -355,14 +356,15 @@ const SCHEMA={
   Despesas:[T('id'),T('data','date'),T('categoria'),T('descricao'),T('valor','money'),T('forma_pagamento'),T('pago','bool'),T('vencimento','date'),T('data_pagamento','date'),T('observacoes'),T('criado_ts','int'),T('exemplo','bool')],
   Investimentos:[T('id'),T('data','date'),T('tipo'),T('descricao'),T('valor','money'),T('forma_pagamento'),T('observacoes'),T('criado_ts','int'),T('exemplo','bool')],
   Movimentacoes:[T('id'),T('data','date'),T('produto_id'),T('produto_nome'),T('tipo'),T('quantidade','int'),T('saldo_anterior','int'),T('saldo_posterior','int'),T('motivo'),T('referencia'),T('custo_unit','money'),T('criado_ts','int'),T('exemplo','bool'),T('centro_custo_id'),T('centro_custo')],
-  Caixa:[T('id'),T('data','date'),T('tipo'),T('descricao'),T('valor','money'),T('criado_ts','int')],
+  Caixa:[T('id'),T('data','date'),T('tipo'),T('descricao'),T('valor','money'),T('criado_ts','int'),T('categoria'),T('forma')],
+  Fechamentos:[T('id'),T('mes'),T('receita_revenda','money'),T('revenda_com_nf','money'),T('revenda_sem_nf','money'),T('receita_servicos','money'),T('receita_total','money'),T('das_pago','bool'),T('relatorio_ok','bool'),T('notas_ok','bool'),T('caixa_conferido','bool'),T('saldo_sistema','money'),T('saldo_real','money'),T('lucro_liquido','money'),T('observacoes'),T('fechado_em','date')],
   Config:[T('chave'),T('valor')],
   Centros_Custo:[T('id'),T('codigo'),T('nome'),T('descricao'),T('ativo','bool'),T('criado_em','date'),T('exemplo','bool')],
   Inventarios:[T('id'),T('data','date'),T('itens_contados','int'),T('itens_com_diferenca','int'),T('diferenca_unidades','int'),T('diferenca_valor','money'),T('valor_contado','money'),T('observacoes'),T('criado_ts','int')],
   Itens_Inventario:[T('id'),T('inventario_id'),T('data','date'),T('produto_id'),T('produto_nome'),T('qtd_sistema','int'),T('qtd_contada','int'),T('custo_unit','money'),
     T('diferenca','int','={qtd_contada}-{qtd_sistema}'),T('diferenca_valor','money','=({qtd_contada}-{qtd_sistema})*{custo_unit}')],
 };
-const TAB={produtos:'Produtos',clientes:'Clientes',vendas:'Vendas',compras:'Compras',despesas:'Despesas',investimentos:'Investimentos',movimentos:'Movimentacoes',caixa:'Caixa',inventarios:'Inventarios',centros:'Centros_Custo'};
+const TAB={fechamentos:'Fechamentos',produtos:'Produtos',clientes:'Clientes',vendas:'Vendas',compras:'Compras',despesas:'Despesas',investimentos:'Investimentos',movimentos:'Movimentacoes',caixa:'Caixa',inventarios:'Inventarios',centros:'Centros_Custo'};
 const ccName=id=>id?(M.centros.get(id)?.nome||'(centro removido)'):'';
 const centros=()=>all('centros').slice().sort((a,b)=>(a.nome||'').localeCompare(b.nome||''));
 const ccOk=(m,cc)=>!cc||(cc==='__sem'?!m.cc:m.cc===cc);
@@ -377,7 +379,8 @@ function toRow(col,e){const ex=!!e.exemplo;switch(col){
   case 'investimentos':return{id:e.id,data:e.data,tipo:e.tipo,descricao:e.descricao,valor:e.valor,forma_pagamento:e.forma,observacoes:e.obs,criado_ts:e.ts,exemplo:ex};
   case 'movimentos':return{id:e.id,data:e.data,produto_id:e.produtoId,produto_nome:pNome(e.produtoId),tipo:e.tipo,quantidade:e.qtd,saldo_anterior:e.saldoAnterior,saldo_posterior:e.saldoPosterior,motivo:e.motivo,referencia:e.ref||'',custo_unit:e.custoUnit??'',criado_ts:e.ts,exemplo:ex,centro_custo_id:e.cc||'',centro_custo:ccName(e.cc)};
   case 'centros':return{id:e.id,codigo:e.codigo,nome:e.nome,descricao:e.descricao,ativo:e.ativo!==false,criado_em:e.criadoEm,exemplo:ex};
-  case 'caixa':return{id:e.id,data:e.data,tipo:e.tipo,descricao:e.descricao,valor:e.valor,criado_ts:e.ts};
+  case 'caixa':return{id:e.id,data:e.data,tipo:e.tipo,descricao:e.descricao,valor:e.valor,criado_ts:e.ts,categoria:e.categoria||'',forma:e.forma||''};
+  case 'fechamentos':return{id:e.id,mes:e.id,receita_revenda:e.revenda,revenda_com_nf:e.comNF,revenda_sem_nf:r2((e.revenda||0)-(e.comNF||0)),receita_servicos:e.servicos,receita_total:e.total,das_pago:!!e.dasPago,relatorio_ok:!!e.relatorioOk,notas_ok:!!e.notasOk,caixa_conferido:!!e.caixaOk,saldo_sistema:e.saldoSistema,saldo_real:e.saldoReal??'',lucro_liquido:e.lucro,observacoes:e.obs,fechado_em:e.fechadoEm};
   case 'inventarios':return{id:e.id,data:e.data,itens_contados:(e.itens||[]).length,itens_com_diferenca:(e.itens||[]).filter(i=>i.contado!==i.sistema).length,diferenca_unidades:sum(e.itens||[],i=>i.contado-i.sistema),diferenca_valor:r2(sum(e.itens||[],i=>(i.contado-i.sistema)*i.custo)),valor_contado:r2(sum(e.itens||[],i=>i.contado*i.custo)),observacoes:e.obs,criado_ts:e.ts};
 }}
 const itemRows=s=>(s.itens||[]).map((i,k)=>({id:s.id+'-i'+k,venda_id:s.id,numero_venda:s.numero,data:s.data,produto_id:i.produtoId,produto_nome:pNome(i.produtoId),quantidade:i.qtd,preco_unit:i.preco,custo_unit:i.custo}));
@@ -395,7 +398,7 @@ function opsFor(key){
 }
 function fullOps(){
   const ops=[];
-  ['produtos','clientes','centros'].forEach(c=>ops.push({op:'replaceAll',tab:TAB[c],rows:all(c).map(e=>toRow(c,e))}));
+  COLS_M.filter(c=>c!=='config').forEach(c=>ops.push({op:'replaceAll',tab:TAB[c],rows:all(c).map(e=>toRow(c,e))}));
   COLS_B.forEach(c=>ops.push({op:'replaceAll',tab:TAB[c],rows:all(c).map(e=>toRow(c,e))}));
   ops.push({op:'replaceAll',tab:'Itens_Venda',rows:[].concat(...all('vendas').map(itemRows))});
   ops.push({op:'replaceAll',tab:'Pagamentos',rows:[].concat(...all('vendas').map(payRows))});
@@ -426,7 +429,7 @@ function fromSheets(d){
   const nm={};[...COLS_B,...COLS_M].forEach(c=>nm[c]=new Map());
   rows('Produtos').forEach(r=>nm.produtos.set(s(r.id),{codigo:s(r.codigo),nome:s(r.nome),categoria:s(r.categoria),marca:s(r.marca),tamanho:s(r.tamanho),unidade:s(r.unidade),estoqueInicial:n(r.estoque_inicial),estoqueMinimo:n(r.estoque_minimo),custo:n(r.custo),preco:n(r.preco),fornecedor:s(r.fornecedor),criadoEm:dt(r.criado_em),exemplo:b(r.exemplo)||undefined}));
   rows('Clientes').forEach(r=>nm.clientes.set(s(r.id),{nome:s(r.nome),telefone:s(r.telefone),bairro:s(r.bairro),obs:s(r.observacoes),criadoEm:dt(r.criado_em),exemplo:b(r.exemplo)||undefined}));
-  const NUMK=['saldoInicial','diasAviso','margemMin','quedaFat','cobertura','minPadrao'];
+  const NUMK=['saldoInicial','diasAviso','margemMin','quedaFat','cobertura','minPadrao','dasValor','limiteMei','metaMargem'];
   const conf={};rows('Config').forEach(r=>{const k=s(r.chave),v=s(r.valor);conf[k]=NUMK.includes(k)?n(v):v});if(Object.keys(conf).length)nm.config.set('geral',conf);
   const put=(col,e)=>{if(!/^\d{4}-\d{2}/.test(e.data||''))return;const bk=e.data.slice(0,7);if(!nm[col].has(bk))nm[col].set(bk,{v:{}});nm[col].get(bk).v[e.id]=e};
   const idx=id=>parseInt(String(id).split('-').pop().slice(1))||0;
@@ -440,7 +443,8 @@ function fromSheets(d){
   rows('Investimentos').forEach(r=>put('investimentos',{id:s(r.id),data:dt(r.data),tipo:s(r.tipo),descricao:s(r.descricao),valor:n(r.valor),forma:s(r.forma_pagamento),obs:s(r.observacoes),ts:n(r.criado_ts),exemplo:b(r.exemplo)||undefined}));
   rows('Movimentacoes').forEach(r=>put('movimentos',{id:s(r.id),data:dt(r.data),produtoId:s(r.produto_id),tipo:s(r.tipo),qtd:n(r.quantidade),saldoAnterior:n(r.saldo_anterior),saldoPosterior:n(r.saldo_posterior),motivo:s(r.motivo),ref:s(r.referencia),custoUnit:s(r.custo_unit)===''?undefined:n(r.custo_unit),ts:n(r.criado_ts),exemplo:b(r.exemplo)||undefined,cc:s(r.centro_custo_id)||undefined}));
   rows('Centros_Custo').forEach(r=>nm.centros.set(s(r.id),{codigo:s(r.codigo),nome:s(r.nome),descricao:s(r.descricao),ativo:!(r.ativo===false||String(r.ativo).toUpperCase()==='FALSE'||r.ativo==='FALSO'),criadoEm:s(r.criado_em).slice(0,10),exemplo:b(r.exemplo)||undefined}));
-  rows('Caixa').forEach(r=>put('caixa',{id:s(r.id),data:dt(r.data),tipo:s(r.tipo),descricao:s(r.descricao),valor:n(r.valor),ts:n(r.criado_ts)}));
+  rows('Caixa').forEach(r=>put('caixa',{id:s(r.id),data:dt(r.data),tipo:s(r.tipo),descricao:s(r.descricao),valor:n(r.valor),ts:n(r.criado_ts),categoria:s(r.categoria)||undefined,forma:s(r.forma)||undefined}));
+  rows('Fechamentos').forEach(r=>nm.fechamentos.set(s(r.id),{revenda:n(r.receita_revenda),comNF:n(r.revenda_com_nf),servicos:n(r.receita_servicos),total:n(r.receita_total),dasPago:b(r.das_pago),relatorioOk:b(r.relatorio_ok),notasOk:b(r.notas_ok),caixaOk:b(r.caixa_conferido),saldoSistema:n(r.saldo_sistema),saldoReal:s(r.saldo_real)===''?undefined:n(r.saldo_real),lucro:n(r.lucro_liquido),obs:s(r.observacoes),fechadoEm:dt(r.fechado_em)}));
   rows('Inventarios').forEach(r=>{const id=s(r.id);put('inventarios',{id,data:dt(r.data),itens:cont[id]||[],obs:s(r.observacoes),ts:n(r.criado_ts)})});
   return nm;
 }
@@ -724,7 +728,7 @@ function barsChart(el,bk,modo){
   for(let v=0;v<=max+1e-9;v+=ax.step){const k=v,yy=y(v);g+=`<line x1="${ml}" x2="${W-mr}" y1="${yy}" y2="${yy}" stroke="var(${k?'--grid':'--axis'})" stroke-width="1"/><text x="${ml-8}" y="${yy+4}" text-anchor="end">${fax(v)}</text>`}
   const every=Math.max(1,Math.ceil(n*44/iw));let bars='',labels='',hits='';
   bk.forEach((b,i)=>{const x0=ml+i*band+(band-gw)/2;bars+=`<g data-i="${i}"><path d="${colPath(x0,y(A[i]),bw,base)}" fill="var(--s1)"/><path d="${colPath(x0+bw+2,y(Bv[i]),bw,base)}" fill="var(--s2)"/></g>`;
-    if(i%every===0||i===n-1)labels+=`<text x="${ml+i*band+band/2}" y="${H-6}" text-anchor="middle">${b.label}</text>`;
+    if((n-1-i)%every===0)labels+=`<text x="${ml+i*band+band/2}" y="${H-6}" text-anchor="middle">${b.label}</text>`;
     hits+=`<rect data-i="${i}" x="${ml+i*band}" y="${mt}" width="${band}" height="${ih}" fill="transparent"/>`});
   el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" height="${H}" role="img" aria-label="Entradas e saídas por período">${g}<g class="bars">${bars}</g>${labels}<g class="hits">${hits}</g></svg><div class="tip" hidden></div>`;
   const svg=el.querySelector('svg'),tip=el.querySelector('.tip'),gs=el.querySelectorAll('.bars g');
@@ -938,7 +942,7 @@ R.custos=()=>{
 };
 
 R.ajustes=()=>{const c=cfg();
-  return `<div class="hd"><div><h1>Ajustes</h1><p>Dados da loja, ligação com a planilha e cópia de segurança.</p></div></div>
+  return `<div class="hd"><div><h1>Ajustes</h1><p>Dados da loja, ligação com a planilha e cópia de segurança.</p></div><a class="btn pri" href="financeiro.html">💰 Abrir controle financeiro</a></div>
   ${gsPanel()}
   <div class="panel" style="margin-top:16px"><div class="hd" style="margin-bottom:8px"><div><h2 style="margin:0">Centros de custo</h2><p>Use para separar onde o estoque é consumido: balcão, entregas, uso da loja, eventos… Escolha o centro em cada entrada ou saída.</p></div><button class="btn pri" data-act="novoCC">＋ Novo centro</button></div>
   ${centros().length?`<ul class="list">${centros().map(x=>{const n=all('movimentos').filter(m=>m.cc===x.id).length;return `<li><span><b>${esc(x.nome)}</b>${x.codigo?' <span class="sub">· '+esc(x.codigo)+'</span>':''} ${x.ativo===false?'<span class="chip c-mute">Inativo</span>':''}<br><span class="sub">${esc(x.descricao||'')}${x.descricao?' · ':''}${n} lançamento${n!==1?'s':''}</span></span><button class="btn sm" data-act="editCC" data-id="${x.id}">Editar</button></li>`}).join('')}</ul>`:'<p class="sub" style="margin:0">Nenhum centro de custo cadastrado.</p>'}</div>
