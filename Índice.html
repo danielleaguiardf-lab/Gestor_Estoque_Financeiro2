@@ -979,7 +979,7 @@ function renderNav(){
 }
 function render(){
   const ae=document.activeElement;const fid=ae&&ae.id&&$('#main').contains(ae)?ae.id:null;let sel=null;try{sel=[ae.selectionStart,ae.selectionEnd]}catch(e){}
-  const top=`<div class="topm"><div class="brand"><div class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6v3l2 3v11a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V9l2-3z"/><path d="M7 13h10"/></svg></div><div><b class="storeName">${esc(cfg().nome)}</b><small id="syncm"></small></div></div><button class="gear" data-act="go" data-id="ajustes" aria-label="Ajustes">${ICON.gear}</button></div>`;
+  const top=`<div class="topm"><div class="brand"><div class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6v3l2 3v11a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V9l2-3z"/><path d="M7 13h10"/></svg></div><div><b class="storeName">${esc(cfg().nome)}</b><small id="syncm"></small></div></div><span style="display:flex;gap:8px"><a class="gear" href="financeiro.html" aria-label="Abrir controle financeiro" title="Financeiro" style="text-decoration:none;font-size:20px">💰</a><button class="gear" data-act="go" data-id="ajustes" aria-label="Ajustes">${ICON.gear}</button></span></div>`;
   try{$('#main').innerHTML=top+R[view]()}catch(e){console.error(e);$('#main').innerHTML=top+'<div class="empty">Algo deu errado nesta tela. Tente outra.</div>'}
   renderNav();setSync();if(view==='inicio')drawCharts();
   if(fid){const el=document.getElementById(fid);if(el){el.focus();try{if(sel&&sel[0]!=null)el.setSelectionRange(sel[0],sel[1])}catch(e){}}}
