@@ -545,14 +545,14 @@ function opEntrada({data,tipo,itens,fornecedor,obs,cc}){cc=cc||undefined;
   });
 }
 function nextSaleNo(){return all('vendas').reduce((m,s)=>Math.max(m,+s.numero||0),0)+1}
-function opSaida({data,tipo,itens,cliente,clienteId,obs,cc,pay}){cc=cc||undefined;pay=pay||{modo:'agora',forma:'Não informado'};
+function opSaida({data,tipo,itens,cliente,clienteId,obs,cc,pay,desconto}){cc=cc||undefined;pay=pay||{modo:'agora',forma:'Não informado'};
   if(tipo==='Venda'){const id=uid(),numero=nextSaleNo();
     const its=itens.map(i=>({produtoId:i.produtoId,qtd:i.qtd,preco:+i.preco||0,custo:+prod(i.produtoId).custo||0}));
-    const total=r2(sum(its,i=>i.qtd*i.preco));
+    const bruto=r2(sum(its,i=>i.qtd*i.preco));desconto=Math.min(bruto,Math.max(0,r2(+desconto||0)));const total=r2(bruto-desconto);
     const depois=pay.modo==='depois',ent=depois?Math.min(r2(+pay.entrada||0),total):total;
-    const s={id,numero,ts:Date.now(),data,clienteId:clienteId||'',clienteNome:clienteId?'':(cliente||''),itens:its,desconto:0,total,custoTotal:r2(sum(its,i=>i.qtd*i.custo)),forma:depois?'Fiado':pay.forma,prevista:depois?pay.vence:'',obs,pagamentos:ent>0?[{data,valor:ent,forma:depois?(pay.formaEnt||'Dinheiro'):pay.forma}]:[]};
+    const s={id,numero,ts:Date.now(),data,clienteId:clienteId||'',clienteNome:clienteId?'':(cliente||''),itens:its,desconto,total,custoTotal:r2(sum(its,i=>i.qtd*i.custo)),forma:depois?'Fiado':pay.forma,prevista:depois?pay.vence:'',obs,pagamentos:ent>0?[{data,valor:ent,forma:depois?(pay.formaEnt||'Dinheiro'):pay.forma}]:[]};
     putEntry('vendas',s);
-    its.forEach(i=>addMov({data,produtoId:i.produtoId,tipo:'Venda',qtd:-i.qtd,motivo:'Venda #'+numero+(cliente?' – '+cliente:'')+(pay.modo==='depois'?' (fiado)':'')+(obs?' · '+obs:''),ref:id,custoUnit:i.custo,cc}));
+    its.forEach(i=>addMov({data,produtoId:i.produtoId,tipo:'Venda',qtd:-i.qtd,motivo:'Venda #'+numero+(cliente?' – '+cliente:'')+(pay.modo==='depois'?' (fiado)':'')+(desconto>0?' · desconto '+brl(desconto):'')+(obs?' · '+obs:''),ref:id,custoUnit:i.custo,cc}));
     return s}
   itens.forEach(i=>{const p=prod(i.produtoId);addMov({data,produtoId:p.id,tipo,qtd:-i.qtd,motivo:tipo+(obs?' · '+obs:''),custoUnit:+p.custo||0,cc})});
 }
@@ -1017,22 +1017,25 @@ function mMov(dir,pid,qty){
     <h3 style="margin-top:16px">Produtos</h3><div class="items" id="mv-items"></div>
     <p style="margin:8px 0 0"><button type="button" class="btn sm" id="mv-add">+ Outro produto</button></p>
     <div class="fgrid" style="margin-top:12px">${fld('Observação',`<input id="mv-obs" placeholder="Ex.: nota fiscal 123, embalagem furada…">`,'wide')}</div>
+    ${dir==='out'?`<div id="mv-desc-w" style="margin-top:12px"><label class="fld" for="mv-desc">Desconto na venda</label><div style="display:flex;gap:8px;align-items:center;margin-top:4px"><input id="mv-desc" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0" style="max-width:160px"><span class="segt" id="mv-dt" role="group" aria-label="Tipo de desconto"><button type="button" data-d="rs" class="on">R$</button><button type="button" data-d="pc">%</button></span><span class="sub" id="mv-dinfo"></span></div></div>`:''}
     ${dir==='out'?`<div id="mv-pay" class="panel" style="margin-top:12px;padding:12px;background:var(--surface2);border:0"><div class="seg" role="group" aria-label="Pagamento"><button type="button" data-p="agora" class="on">✓ Pago agora</button><button type="button" data-p="depois">📒 Fiado (pagar depois)</button></div>
       <div class="fgrid" style="margin-top:10px"><span id="pay-a">${fld('Forma de pagamento',`<select id="mv-fp">${FORMAS_PG.map(x=>`<option>${x}</option>`).join('')}<option value="__fiado">📒 Fiado</option></select>`)}</span>
       <span id="pay-d1" hidden>${fld('Vence em',`<input type="date" id="mv-venc" value="${addDays(today(),7)}">`)}</span><span id="pay-d2" hidden>${fld('Entrada recebida agora (R$)',`<input type="number" inputmode="decimal" id="mv-ent" min="0" step="0.01" value="0">`)}</span>
       <span id="pay-d3" hidden>${fld('Telefone do cliente',`<input id="mv-tel" inputmode="tel" placeholder="Para cobrar no WhatsApp">`,'','Só para cliente novo.')}</span></div></div>`:''}
     <div class="summ" id="mv-sum"></div>
     <div class="mf"><span class="msg" id="mMsg"></span><button class="btn" data-act="closeModal">Cancelar</button><button class="btn pri" id="mv-save">Salvar ${dir==='in'?'entrada':'saída'}</button></div>`);
+  let dTipo='rs';const descVal=sub=>{const v=Math.max(0,nval('mv-desc'));return r2(Math.min(sub,dTipo==='pc'?sub*Math.min(v,100)/100:v))};
   const upd=()=>{const pl=priceLabel();const q=sum(items,i=>i.qtd),c=sum(items,i=>{const p=prod(i.produtoId);return p?i.qtd*(dir==='in'&&tipo==='Compra'?i.v:+p.custo||0):0});
     let h=`<span>Unidades <b>${num(q)}</b></span>`;
     if(dir==='in')h+=tipo==='Compra'?`<span>Total da compra <b>${brl(c)}</b></span>`:tipo==='Bonificação'?'<span>Sem custo: baixa o custo médio</span>':`<span>Valor (custo) <b>${brl(c)}</b></span>`;
-    else{h+=`<span>Custo que sai <b>${brl(c)}</b></span>`;if(tipo==='Venda'){const v=sum(items,i=>i.qtd*i.v);h+=`<span>Venda <b>${brl(v)}</b></span><span>Lucro bruto <b style="color:var(--${v-c<0?'bad':'ok'})">${brl(v-c)}</b></span>`}}
+    else{h+=`<span>Custo que sai <b>${brl(c)}</b></span>`;if(tipo==='Venda'){const sub=sum(items,i=>i.qtd*i.v),d=$('#mv-desc')?descVal(sub):0,v=r2(sub-d);if(d>0)h+=`<span>Subtotal <b>${brl(sub)}</b></span><span>Desconto <b style="color:var(--out)">− ${brl(d)}</b> (${pct(sub?d/sub*100:0)})</span>`;h+=`<span>Total da venda <b>${brl(v)}</b></span><span>Lucro bruto <b style="color:var(--${v-c<0?'bad':'ok'})">${brl(v-c)}</b></span>`;if(v-c<0&&sub>0)h+=`<span style="color:var(--bad);font-weight:700">⚠ Com esse desconto a venda fica abaixo do custo</span>`;const di=$('#mv-dinfo');if(di)di.textContent=d>0?(dTipo==='pc'?'= '+brl(d):'= '+pct(sub?d/sub*100:0)):''}}
     $('#mv-sum').innerHTML=h;setMsg('')};
   const draw=()=>{const pl=priceLabel();$('#mv-items').innerHTML=items.map((it,i)=>`<div class="item${pl?'':' noprice'}"><select id="mv-p${i}" aria-label="Produto">${pOpts(it.produtoId)}</select><input type="number" inputmode="numeric" id="mv-q${i}" min="1" step="1" value="${it.qtd}" aria-label="Quantidade">${pl?`<input type="number" inputmode="decimal" id="mv-v${i}" min="0" step="0.01" value="${it.v||''}" placeholder="${pl}" aria-label="${pl}">`:''}<button type="button" class="x" data-rm="${i}" aria-label="Remover"${items.length<2?' disabled':''}>×</button></div>`).join('');
     items.forEach((it,i)=>{$('#mv-p'+i).onchange=e=>{it.produtoId=e.target.value;setDefault(it);draw()};$('#mv-q'+i).oninput=e=>{it.qtd=Math.max(0,parseFloat(e.target.value)||0);upd()};const v=$('#mv-v'+i);if(v)v.oninput=e=>{it.v=Math.max(0,parseFloat(e.target.value)||0);upd()}});
     $('#mv-items').querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>{items.splice(+b.dataset.rm,1);draw()});upd()};
   $('#mv-tipo').querySelectorAll('button').forEach(b=>b.onclick=()=>{tipo=b.dataset.t;$('#mv-tipo').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
-    const fw=$('#mv-forn-w');if(fw)fw.hidden=tipo!=='Compra';const cw=$('#mv-cli-w');if(cw)cw.hidden=tipo!=='Venda';const pw=$('#mv-pay');if(pw)pw.hidden=tipo!=='Venda';draw()});
+    const fw=$('#mv-forn-w');if(fw)fw.hidden=tipo!=='Compra';const cw=$('#mv-cli-w');if(cw)cw.hidden=tipo!=='Venda';const pw=$('#mv-pay');if(pw)pw.hidden=tipo!=='Venda';const dw=$('#mv-desc-w');if(dw)dw.hidden=tipo!=='Venda';draw()});
+  if($('#mv-desc')){$('#mv-desc').oninput=upd;$('#mv-dt').querySelectorAll('button').forEach(b=>b.onclick=()=>{dTipo=b.dataset.d;$('#mv-dt').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));upd()})}
   let payModo='agora';const pw0=$('#mv-pay');const setPay=m=>{payModo=m;pw0.querySelectorAll('[data-p]').forEach(x=>x.classList.toggle('on',x.dataset.p===m));$('#pay-a').hidden=m!=='agora';['pay-d1','pay-d2','pay-d3'].forEach(i=>$('#'+i).hidden=m!=='depois');$('#mv-cli').placeholder=m==='depois'?'Obrigatório no fiado':'Opcional se pago agora';if(m==='agora'&&val('mv-fp')==='__fiado')$('#mv-fp').value='Pix'};
   if(pw0){pw0.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>setPay(b.dataset.p));$('#mv-fp').onchange=()=>{if(val('mv-fp')==='__fiado')setPay('depois')}}
   $('#mv-cc').onchange=()=>{const n=$('#mv-ccn');n.hidden=val('mv-cc')!=='__novo';if(!n.hidden)n.focus()};
@@ -1045,17 +1048,18 @@ function mMov(dir,pid,qty){
     if(dir==='in'&&tipo==='Compra'&&it.some(i=>!(i.v>0)))return setMsg('Informe o custo unitário da compra.');
     if(dir==='out'){const need={};it.forEach(i=>need[i.produtoId]=(need[i.produtoId]||0)+i.qtd);
       for(const id in need)if(need[id]>stock(id))return setMsg(`Estoque insuficiente de ${pName(prod(id))}: tem ${num(stock(id))}. Se a contagem estiver errada, faça um inventário.`)}
+    if(tipo==='Venda'&&dir==='out'){const dv=nval('mv-desc');if(dv<0)return setMsg('O desconto não pode ser negativo.');if(dTipo==='pc'&&dv>100)return setMsg('O desconto não pode passar de 100%.');if(dTipo==='rs'&&dv>sum(it,i=>i.qtd*i.v)+0.005)return setMsg('O desconto é maior que o valor da venda.')}
     let cliId='',cliNome='',pay=null;
     if(dir==='out'&&tipo==='Venda'){cliNome=val('mv-cli');const ex=cliNome&&all('clientes').find(c=>norm(c.nome)===norm(cliNome));
       if(payModo==='depois'){if(!cliNome){$('#mv-cli').focus();return setMsg('No fiado, informe o nome do cliente.')}const vence=val('mv-venc');if(!vence)return setMsg('Informe a data de vencimento.');
-        const tot=sum(it,i=>i.qtd*i.v);const ent=nval('mv-ent');if(ent>=tot&&tot>0)return setMsg('A entrada cobre o valor todo: use "Pago agora".');pay={modo:'depois',vence,entrada:ent,formaEnt:'Dinheiro'}}
+        const tot=r2(sum(it,i=>i.qtd*i.v)-descVal(sum(it,i=>i.qtd*i.v)));const ent=nval('mv-ent');if(ent>=tot&&tot>0)return setMsg('A entrada cobre o valor todo: use "Pago agora".');pay={modo:'depois',vence,entrada:ent,formaEnt:'Dinheiro'}}
       else pay={modo:'agora',forma:val('mv-fp')};
       if(ex)cliId=ex.id;else if(cliNome&&payModo==='depois'){cliId=uid();putMaster('clientes',cliId,{nome:cliNome,telefone:val('mv-tel'),bairro:'',obs:'',criadoEm:today()})}}
     let cc=val('mv-cc');if(cc==='__novo'){const nome=val('mv-ccn');if(!nome)return setMsg('Digite o nome do novo centro de custo.');const ex=centros().find(x=>norm(x.nome)===norm(nome));if(ex)cc=ex.id;else{cc=uid();putMaster('centros',cc,{nome,codigo:'',descricao:'',ativo:true,criadoEm:today()})}}
     try{localStorage.setItem(LSK+'ccUlt'+dir,cc)}catch(e){}
     $('#mv-save').disabled=true;
     if(dir==='in')opEntrada({data,tipo,itens:it.map(i=>({produtoId:i.produtoId,qtd:i.qtd,custo:i.v})),fornecedor:tipo==='Compra'?val('mv-forn'):'',obs:val('mv-obs'),cc});
-    else opSaida({data,tipo,itens:it.map(i=>({produtoId:i.produtoId,qtd:i.qtd,preco:i.v})),cliente:cliNome,clienteId:cliId,pay,obs:val('mv-obs'),cc});
+    else opSaida({data,tipo,itens:it.map(i=>({produtoId:i.produtoId,qtd:i.qtd,preco:i.v})),cliente:cliNome,clienteId:cliId,pay,obs:val('mv-obs'),cc,desconto:tipo==='Venda'&&$('#mv-desc')?descVal(sum(it,i=>i.qtd*i.v)):0});
     const q=sum(it,i=>i.qtd);await done(`${dir==='in'?'Entrada':'Saída'} registrada: ${dir==='in'?'+':'−'}${num(q)} unidade${q!==1?'s':''}.`)};
 }
 
